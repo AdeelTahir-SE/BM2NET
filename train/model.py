@@ -24,9 +24,16 @@ class TokenProjector(nn.Module):
     sequences, project to d_model, and add positional + view embeddings.
     """
 
-    def __init__(self, in_channels: int, d_model: int, dropout: float = 0.1):
+    def __init__(
+        self,
+        in_channels: int,
+        d_model: int,
+        num_tokens: int = 300,
+        dropout: float = 0.1,
+    ):
         super().__init__()
         self.d_model = d_model
+        self.num_tokens = num_tokens
 
         # Linear projection from backbone channels to d_model
         self.proj = nn.Linear(in_channels, d_model)
@@ -36,17 +43,10 @@ class TokenProjector(nn.Module):
         # Learnable view embeddings (frontal=0, lateral=1)
         self.view_embedding = nn.Embedding(2, d_model)
 
-        # Position embeddings are lazily initialized based on spatial dims
-        self._pos_embedding = None
-        self._num_tokens = None
-
-    def _init_pos_embedding(self, num_tokens: int, device: torch.device):
-        """Lazily create position embeddings once we know the spatial size."""
-        if self._num_tokens != num_tokens:
-            self._num_tokens = num_tokens
-            self._pos_embedding = nn.Parameter(
-                torch.randn(1, num_tokens, self.d_model, device=device) * 0.02
-            )
+        # Learnable position embeddings for 300 tokens per view: (640/32) * (480/32) = 20 * 15
+        self._pos_embedding = nn.Parameter(
+            torch.randn(1, num_tokens, self.d_model) * 0.02
+        )
 
     def forward(self, features: torch.Tensor):
         """
@@ -75,8 +75,12 @@ class TokenProjector(nn.Module):
         frontal_tokens = self.proj(frontal_tokens)  # (B, N, d_model)
         lateral_tokens = self.proj(lateral_tokens)  # (B, N, d_model)
 
-        # Add position embeddings (lazy init)
-        self._init_pos_embedding(num_tokens, features.device)
+        # Ensure position embedding matches token count (fallback if input resolution changes)
+        if self._pos_embedding is None or self._pos_embedding.shape[1] != num_tokens:
+            self._pos_embedding = nn.Parameter(
+                torch.randn(1, num_tokens, self.d_model, device=features.device) * 0.02
+            )
+
         frontal_tokens = frontal_tokens + self._pos_embedding
         lateral_tokens = lateral_tokens + self._pos_embedding
 
@@ -314,7 +318,7 @@ class BM2Net(nn.Module):
         return predictions
 
 
-def build_model(config) -> BM2Net:
+def build_model(config, pretrained: bool = True) -> BM2Net:
     """Factory function to create a BM2Net from a TrainConfig."""
     return BM2Net(
         d_model=config.d_model,
@@ -322,5 +326,5 @@ def build_model(config) -> BM2Net:
         mlp_hidden=config.mlp_hidden,
         num_measurements=config.num_measurements,
         dropout=config.dropout,
-        pretrained_backbone=True,
+        pretrained_backbone=pretrained,
     )

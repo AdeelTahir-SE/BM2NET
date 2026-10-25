@@ -115,15 +115,21 @@ def main():
         args.device if args.device
         else ("cuda" if torch.cuda.is_available() else "cpu")
     )
-    use_amp = not args.no_amp
+    use_amp = not args.no_amp if device.type == "cuda" else False
 
     logger = setup_logger("evaluate")
     set_seed(config.seed)
 
     # ── Load model ─────────────────────────────────────────────────────
+    ckpt_path = Path(args.checkpoint)
+    if not ckpt_path.exists():
+        logger.error(f"Checkpoint not found at: {ckpt_path.resolve()}")
+        logger.error("Make sure training has completed at least 5 epochs (or one evaluation cycle) so 'best_model.pt' is saved.")
+        sys.exit(1)
+
     logger.info(f"Loading checkpoint: {args.checkpoint}")
-    model = build_model(config).to(device)
-    ckpt_info = load_checkpoint(Path(args.checkpoint), model)
+    model = build_model(config, pretrained=False).to(device)
+    ckpt_info = load_checkpoint(ckpt_path, model)
     logger.info(f"Checkpoint from epoch {ckpt_info['epoch']+1}, "
                 f"best MAE: {ckpt_info['best_mae']:.3f} cm")
 

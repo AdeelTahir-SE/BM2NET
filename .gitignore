@@ -4,3 +4,6 @@ bodym/
 processed-bodym/
 
 train/logs/
+checkpoints/
+results/
+output/

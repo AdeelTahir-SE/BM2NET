@@ -163,7 +163,15 @@ def load_checkpoint(
         Dict with 'epoch' and 'best_mae' keys.
     """
     state = torch.load(path, map_location="cpu", weights_only=False)
-    model.load_state_dict(state["model_state_dict"])
+    state_dict = state["model_state_dict"]
+
+    # Ensure position embedding parameter exists on model before loading state dict
+    if "token_projector._pos_embedding" in state_dict:
+        saved_pos = state_dict["token_projector._pos_embedding"]
+        if not hasattr(model.token_projector, "_pos_embedding") or model.token_projector._pos_embedding is None:
+            model.token_projector._pos_embedding = nn.Parameter(torch.zeros_like(saved_pos))
+
+    model.load_state_dict(state_dict)
     if optimizer is not None and "optimizer_state_dict" in state:
         optimizer.load_state_dict(state["optimizer_state_dict"])
     if scheduler is not None and state.get("scheduler_state_dict"):

@@ -11,12 +11,23 @@ from typing import List
 class TrainConfig:
     """All hyperparameters and paths for BM2-Net training."""
 
-    # ── Paths ──────────────────────────────────────────────────────────
-    project_root: str = r"E:\codingfolder\bm2-net"
-    data_root: str = r"E:\codingfolder\bm2-net\processed-bodym"
-    raw_data_root: str = r"E:\codingfolder\bm2-net\bodym"
-    checkpoint_dir: str = r"E:\codingfolder\bm2-net\train\checkpoints"
-    log_dir: str = r"E:\codingfolder\bm2-net\train\logs"
+    # ── Paths (relative defaults for Windows, Linux, Colab) ────────────
+    project_root: str = str(Path(__file__).resolve().parent.parent)
+    data_root: str = ""
+    raw_data_root: str = ""
+    checkpoint_dir: str = ""
+    log_dir: str = ""
+
+    def __post_init__(self):
+        root = Path(self.project_root)
+        if not self.data_root:
+            self.data_root = str(root / "processed-bodym")
+        if not self.raw_data_root:
+            self.raw_data_root = str(root / "bodym")
+        if not self.checkpoint_dir:
+            self.checkpoint_dir = str(root / "train" / "checkpoints")
+        if not self.log_dir:
+            self.log_dir = str(root / "train" / "logs")
 
     # ── Image / Input ──────────────────────────────────────────────────
     img_height: int = 640          # Height of each view after resize

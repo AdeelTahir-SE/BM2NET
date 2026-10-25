@@ -51,9 +51,24 @@ class BodyMDataset(Dataset):
     def __len__(self) -> int:
         return len(self.manifest)
 
+    def _resolve_path(self, path: str) -> Path:
+        """Resolve path, handling cross-platform paths (e.g. Windows -> Linux/Colab)."""
+        p = Path(path)
+        if p.exists():
+            return p
+        # If absolute path was recorded on another machine, re-anchor to raw_data_root
+        normalized_str = str(path).replace("\\", "/")
+        if "bodym/" in normalized_str:
+            rel_subpath = normalized_str.split("bodym/", 1)[1]
+            candidate = Path(self.config.raw_data_root) / rel_subpath
+            if candidate.exists():
+                return candidate
+        return p
+
     def _load_mask(self, path: str) -> np.ndarray:
         """Load a silhouette mask and resize to (img_height, img_width)."""
-        img = Image.open(path).convert("L")
+        resolved_path = self._resolve_path(path)
+        img = Image.open(resolved_path).convert("L")
         img = img.resize(
             (self.config.img_width, self.config.img_height),
             Image.BILINEAR,
