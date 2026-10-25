@@ -7,3 +7,5 @@ train/logs/
 checkpoints/
 results/
 output/
+
+web/

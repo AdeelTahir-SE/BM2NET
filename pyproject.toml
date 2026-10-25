@@ -11,4 +11,6 @@ dependencies = [
     "Pillow",
     "tqdm",
     "tensorboard",   # optional, for logging
+    "flask",
+    "rembg[cpu]",
 ]
