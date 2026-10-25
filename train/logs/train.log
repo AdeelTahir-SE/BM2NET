@@ -1,0 +1,15 @@
+[2026-10-25 16:09:38] INFO - ============================================================
+[2026-10-25 16:09:38] INFO - BM2-Net Training
+[2026-10-25 16:09:38] INFO - ============================================================
+[2026-10-25 16:09:38] INFO - Device: cpu
+[2026-10-25 16:09:38] INFO - Epochs: 100, Batch size: 16
+[2026-10-25 16:09:38] INFO - LR: 0.0001, Weight decay: 0.0001
+[2026-10-25 16:09:38] INFO - d_model: 256, n_heads: 8
+[2026-10-25 16:09:38] INFO - Mixed precision: True
+[2026-10-25 16:09:38] INFO - Loading datasets...
+[2026-10-25 16:09:38] INFO - Train: 6134 samples, 383 batches
+[2026-10-25 16:09:38] INFO - TestA: 1684 samples
+[2026-10-25 16:09:38] INFO - TestB: 1160 samples
+[2026-10-25 16:09:38] INFO - Building model...
+[2026-10-25 16:09:39] INFO - Trainable parameters: 4,289,782
+[2026-10-25 16:09:39] INFO - Starting training...
