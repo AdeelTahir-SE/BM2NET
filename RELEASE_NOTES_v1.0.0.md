@@ -43,21 +43,21 @@ flowchart TD
         Split --> F_Feat["Frontal Features: 1280 x 20 x 15"]
         Split --> L_Feat["Lateral Features: 1280 x 20 x 15"]
         
-        F_Feat --> F_Proj["Linear Projection to d_model (256)"]
-        L_Feat --> L_Proj["Linear Projection to d_model (256)"]
+        F_Feat --> F_Proj["Linear Projection to d_model = 256"]
+        L_Feat --> L_Proj["Linear Projection to d_model = 256"]
         
         F_Proj --> F_Emb["Add Positional Embedding + Frontal View Embedding"]
         L_Proj --> L_Emb["Add Positional Embedding + Lateral View Embedding"]
         
-        F_Emb --> F_Tokens["Frontal Token Sequence: (B, 300, 256)"]
-        L_Emb --> L_Tokens["Lateral Token Sequence: (B, 300, 256)"]
+        F_Emb --> F_Tokens["Frontal Token Sequence: (Batch, 300, 256)"]
+        L_Emb --> L_Tokens["Lateral Token Sequence: (Batch, 300, 256)"]
     end
 
     subgraph Attention["4. Bidirectional Cross-View Attention"]
-        F_Tokens --> CrossAttn1["Cross-Attention: Frontal <- Lateral\n(Q: Frontal, K,V: Lateral)"]
+        F_Tokens --> CrossAttn1["Cross-Attention: Frontal <- Lateral\n(Queries: Frontal | Keys, Values: Lateral)"]
         L_Tokens --> CrossAttn1
         
-        F_Tokens --> CrossAttn2["Cross-Attention: Lateral <- Frontal\n(Q: Lateral, K,V: Frontal)"]
+        F_Tokens --> CrossAttn2["Cross-Attention: Lateral <- Frontal\n(Queries: Lateral | Keys, Values: Frontal)"]
         L_Tokens --> CrossAttn2
         
         CrossAttn1 --> F_Attn["Attended Frontal Representation"]
@@ -65,63 +65,64 @@ flowchart TD
     end
 
     subgraph Fusion["5. Global Pooling & Residual Fusion"]
-        F_Attn --> F_Pool["Global Average Pooling -> (B, 256)"]
-        L_Attn --> L_Pool["Global Average Pooling -> (B, 256)"]
+        F_Attn --> F_Pool["Global Average Pooling -> (Batch, 256)"]
+        L_Attn --> L_Pool["Global Average Pooling -> (Batch, 256)"]
         
-        F_Pool --> Cat["Concatenation -> (B, 512)"]
+        F_Pool --> Cat["Concatenation -> (Batch, 512)"]
         L_Pool --> Cat
         
         Cat --> Res["Residual Projection & LayerNorm"]
-        Res --> FusedVec["Fused Semantic Vector: (B, 512)"]
+        Res --> FusedVec["Fused Semantic Vector: (Batch, 512)"]
     end
 
     subgraph Head["6. Regression Prediction Head"]
         FusedVec --> Linear1["Dense Layer (512 -> 128) + ReLU + Dropout(0.1)"]
         Linear1 --> Linear2["Dense Layer (128 -> 14)"]
-        Linear2 --> Denorm["Z-Score Denormalization"]
+        Linear2 --> Denorm["Z-Score Denormalization to Real-World Scale"]
         Denorm --> Outputs["14 Anthropometric Measurements (cm)"]
     end
 ```
 
 ### 1. Composite Input Representation
-The input tensor $\mathbf{X} \in \mathbb{R}^{3 \times 640 \times 960}$ encodes geometry and global biometrics across three aligned channels:
-- **Channel 0 (Orthographic Geometry):** The frontal silhouette ($640 \times 480$) and lateral silhouette ($640 \times 480$) are horizontally concatenated to form a composite $640 \times 960$ array, normalized using dataset-wide silhouette pixel statistics ($\mu = 0.1491, \sigma = 0.3546$).
-- **Channel 1 (Height Prior):** The subject's total standing height is normalized ($z$-score) and broadcast uniformly across a $640 \times 960$ matrix.
-- **Channel 2 (Weight Prior):** The subject's body weight is normalized ($z$-score) and broadcast uniformly across a $640 \times 960$ matrix.
+The input tensor `X` with dimensions `(3, 640, 960)` encodes geometry and global biometrics across three aligned channels:
+- **Channel 0 (Orthographic Geometry):** The frontal silhouette `(640 × 480)` and lateral silhouette `(640 × 480)` are horizontally concatenated to form a composite `640 × 960` array, normalized using dataset-wide silhouette pixel statistics (`mean = 0.1491`, `std = 0.3546`).
+- **Channel 1 (Height Prior):** The subject's standing height is z-score normalized and broadcast uniformly across a `640 × 960` matrix.
+- **Channel 2 (Weight Prior):** The subject's body weight is z-score normalized and broadcast uniformly across a `640 × 960` matrix.
 
 ### 2. MNASNet Backbone
-Features are extracted using an MNASNet 1.0 convolutional backbone, optimized for mobile latency and spatial feature resolution. For an input dimension of $640 \times 960$, the backbone produces a latent feature map $\mathbf{F} \in \mathbb{R}^{1280 \times 20 \times 30}$.
+Features are extracted using an MNASNet 1.0 convolutional backbone, optimized for mobile latency and spatial feature resolution. For an input dimension of `640 × 960`, the backbone produces a latent feature map of shape `(1280, 20, 30)`.
 
 ### 3. Token Projector & Embeddings
-The feature map $\mathbf{F}$ is partitioned along the width dimension into two halves:
-- Frontal feature grid: $\mathbf{F}_{\text{front}} \in \mathbb{R}^{1280 \times 20 \times 15}$ (300 spatial tokens).
-- Lateral feature grid: $\mathbf{F}_{\text{lat}} \in \mathbb{R}^{1280 \times 20 \times 15}$ (300 spatial tokens).
+The feature map is partitioned along the width dimension into two halves:
+- Frontal feature grid: `(1280, 20, 15)` -> 300 spatial tokens.
+- Lateral feature grid: `(1280, 20, 15)` -> 300 spatial tokens.
 
-Each spatial token is projected into a $d_{\text{model}} = 256$ dimensional space via a linear projection layer followed by Layer Normalization and Dropout ($p = 0.1$). Learned 1D positional embeddings $\mathbf{E}_{\text{pos}} \in \mathbb{R}^{1 \times 300 \times 256}$ and view embeddings $\mathbf{E}_{\text{view}} \in \mathbb{R}^{2 \times 256}$ are added to retain spatial structure and orientation identity.
+Each spatial token is projected into a `d_model = 256` dimensional space via a linear projection layer followed by Layer Normalization and Dropout (`p = 0.1`). Learned 1D positional embeddings of shape `(1, 300, 256)` and view embeddings of shape `(2, 256)` are added to preserve spatial structure and orientation identity.
 
 ### 4. Bidirectional Cross-View Attention
-To resolve spatial ambiguities (e.g., distinguishing torso depth from limb occlusion), the network executes two-way cross-view multi-head attention:
-- **Frontal Query Attention:** Frontal tokens query lateral keys and values to capture anatomical depth.
-  $$\mathbf{Z}_{\text{front}} = \text{MHA}\left(Q = \mathbf{T}_{\text{front}}, K = \mathbf{T}_{\text{lat}}, V = \mathbf{T}_{\text{lat}}\right)$$
-- **Lateral Query Attention:** Lateral tokens query frontal keys and values to capture coronal breadth.
-  $$\mathbf{Z}_{\text{lat}} = \text{MHA}\left(Q = \mathbf{T}_{\text{lat}}, K = \mathbf{T}_{\text{front}}, V = \mathbf{T}_{\text{front}}\right)$$
+To resolve spatial ambiguities (such as distinguishing torso depth from limb occlusion), the network executes two-way cross-view multi-head attention:
+- **Frontal Query Attention:** Frontal tokens query lateral keys and values to capture anatomical depth:
+  `Z_front = MultiHeadAttention(Q = Tokens_front, K = Tokens_lat, V = Tokens_lat)`
+- **Lateral Query Attention:** Lateral tokens query frontal keys and values to capture coronal breadth:
+  `Z_lat = MultiHeadAttention(Q = Tokens_lat, K = Tokens_front, V = Tokens_front)`
 
-Both cross-attention streams incorporate multi-head projections ($h = 8$ heads, $d_k = 32$), residual additions, and Layer Normalization.
+Both cross-attention streams incorporate multi-head projections (`heads = 8`, `d_k = 32`), residual skip connections, and Layer Normalization.
 
 ### 5. Pooling and Fusion Block
-Token sequences are compressed via global average pooling across the token dimension ($N = 300$):
-$$\mathbf{v}_{\text{front}} = \frac{1}{N}\sum_{i=1}^{N} \mathbf{Z}_{\text{front}}^{(i)}, \quad \mathbf{v}_{\text{lat}} = \frac{1}{N}\sum_{i=1}^{N} \mathbf{Z}_{\text{lat}}^{(i)}$$
+Token sequences are compressed via global average pooling across the token dimension (`N = 300`):
+- `v_front = Mean(Z_front, dim=tokens)` -> shape `(Batch, 256)`
+- `v_lat = Mean(Z_lat, dim=tokens)` -> shape `(Batch, 256)`
 
-The vectors are concatenated into $\mathbf{v}_{\text{cat}} = [\mathbf{v}_{\text{front}} \,\|\, \mathbf{v}_{\text{lat}}] \in \mathbb{R}^{512}$, processed through a linear residual block, and stabilized with Layer Normalization:
-$$\mathbf{v}_{\text{fused}} = \text{LayerNorm}\left(\mathbf{v}_{\text{cat}} + \text{Dropout}\left(\mathbf{W}_{\text{res}} \mathbf{v}_{\text{cat}}\right)\right)$$
+The vectors are concatenated into `v_cat = [v_front || v_lat]` of dimension 512, processed through a linear residual block, and stabilized with Layer Normalization:
+- `v_fused = LayerNorm(v_cat + Dropout(Linear(v_cat)))`
 
 ### 6. MLP Prediction Head
 The fused 512-dimensional vector is projected to the 14 measurement outputs through a two-layer multi-layer perceptron:
-$$\hat{\mathbf{y}}_{\text{norm}} = \mathbf{W}_2 \cdot \text{ReLU}\left(\mathbf{W}_1 \mathbf{v}_{\text{fused}} + \mathbf{b}_1\right) + \mathbf{b}_2$$
-where $\mathbf{W}_1 \in \mathbb{R}^{128 \times 512}$ and $\mathbf{W}_2 \in \mathbb{R}^{14 \times 128}$.
+- `h = ReLU(Linear(v_fused, 512 -> 128))`
+- `y_norm = Linear(h, 128 -> 14)`
 
 Outputs are denormalized using target statistics to produce real-world centimeters:
-$$\hat{y}_i = \hat{y}_{\text{norm}, i} \cdot \sigma_i + \mu_i$$
+- `y_cm = (y_norm * std_measurement) + mean_measurement`
 
 ---
 
@@ -150,7 +151,7 @@ The model concurrently regresses 14 anatomical parameters covering all major ISO
 
 ## Performance & Empirical Validation
 
-Training and evaluation were conducted on the benchmark BodyM dataset. Target values were optimized using the Mean Absolute Error (MAE / $L_1$) criterion with AdamW optimization and cosine learning rate scheduling.
+Training and evaluation were conducted on the benchmark BodyM dataset. Target values were optimized using the Mean Absolute Error (MAE / L1 loss) criterion with AdamW optimization and cosine learning rate scheduling.
 
 - **Best Validation MAE (Mean Across 14 Metrics):** **`1.006 cm`**
 - **Inference Latency:**
@@ -165,7 +166,7 @@ This release introduces the complete local testing suite in `local-test/`:
 
 ### Key Features
 - **Flexible Photo & Silhouette Input:** Accepts camera photos (`.jpg`, `.png`, `.avif`) with automated segmentation or pre-extracted silhouette masks.
-- **Polarity Auto-Correction:** Checks boundary corner values and automatically corrects inverted masks (ensuring foreground $= 255$, background $= 0$).
+- **Polarity Auto-Correction:** Checks boundary corner values and automatically corrects inverted masks (ensuring foreground = 255, background = 0).
 - **Unit Conversion Engine:** Accepts height in cm, meters, inches, or feet-and-inches (`5ft 10`, `5'10"`, `70in`), and weight in kg or pounds (`165lbs`, `75kg`).
 - **Comprehensive Output Generation:**
   - `report_<timestamp>.png`: Rendered visual infographic showing dual input views, physical statistics (BMI, height, weight), and measurement card.
