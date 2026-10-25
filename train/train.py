@@ -183,7 +183,7 @@ def train_one_epoch(
             preds = model(inputs)
             loss = criterion(preds, targets)
 
-        if config.mixed_precision:
+        if config.mixed_precision and scaler is not None:
             scaler.scale(loss).backward()
             scaler.unscale_(optimizer)
             nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip_norm)
@@ -209,6 +209,8 @@ def main():
     set_seed(config.seed)
     logger = setup_logger("train", config.log_path)
     device = torch.device(config.device if torch.cuda.is_available() else "cpu")
+    if device.type == "cpu":
+        config.mixed_precision = False
 
     logger.info("=" * 60)
     logger.info("BM2-Net Training")
@@ -239,7 +241,7 @@ def main():
     # ── Training setup ─────────────────────────────────────────────────
     criterion = nn.MSELoss()
     optimizer, scheduler = build_optimizer_and_scheduler(model, config)
-    scaler = GradScaler(enabled=config.mixed_precision)
+    scaler = GradScaler("cuda", enabled=config.mixed_precision) if torch.cuda.is_available() else None
     best_mae = float("inf")
     start_epoch = 0
 

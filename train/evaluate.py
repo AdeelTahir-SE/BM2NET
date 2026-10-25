@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 import torch
-from torch.cuda.amp import autocast
+from torch.amp import autocast
 
 # Add project root to path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent

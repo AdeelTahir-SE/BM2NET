@@ -2,3 +2,5 @@ bodym/
 .venv
 
 processed-bodym/
+
+train/logs/
